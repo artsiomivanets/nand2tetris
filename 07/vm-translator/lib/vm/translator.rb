@@ -1,31 +1,37 @@
 # frozen_string_literal: true
 
 require_relative "translator/version"
+require "pry"
 c = 0
 
 module Vm
   module Translator
     class Error < StandardError; end
 
-    module Operations
+    module Commands
       @c = 0
-      def self.put_to_stack
+
+      def self.put_to_stack(_context)
         ["@SP", "A=M", "M=D"]
       end
 
-      def self.inc
+      def self.put_to_memory(_context)
+        ["M=D"]
+      end
+
+      def self.inc(_context)
         ["@SP", "M=M+1"]
       end
 
-      def self.dec
+      def self.dec(_context)
         ["@SP", "M=M-1"]
       end
 
-      def self.take_from_stack
+      def self.take_from_stack(_context)
         ["@SP", "A=M", "D=M"]
       end
 
-      def self.sum_current
+      def self.sum_current(_context)
         ["A=M", "M=D+M"]
       end
 
@@ -34,85 +40,139 @@ module Vm
         ["A=M", "D=M-D", "@T_#{@c}", cond, f, "@END_#{@c}", "0;JMP", "(T_#{@c})", t, "(END_#{@c})"]
       end
 
-      def self.set_minus_1_to_stack
-        ["D=-1"] + put_to_stack
+      def self.set_minus_1_to_stack(context)
+        ["D=-1"] + put_to_stack(context)
       end
 
-      def self.set_0_to_stack
-        ["D=0"] + put_to_stack
+      def self.set_0_to_stack(context)
+        ["D=0"] + put_to_stack(context)
       end
 
-      def self.eq
-        branch("D;JEQ", set_minus_1_to_stack, set_0_to_stack)
+      def self.eq(context)
+        branch("D;JEQ", set_minus_1_to_stack(context), set_0_to_stack(context))
       end
 
-      def self.lt
-        branch("D;JLT", set_minus_1_to_stack, set_0_to_stack)
+      def self.lt(context)
+        branch("D;JLT", set_minus_1_to_stack(context), set_0_to_stack(context))
       end
 
-      def self.gt
-        branch("D;JGT", set_minus_1_to_stack, set_0_to_stack)
+      def self.gt(context)
+        branch("D;JGT", set_minus_1_to_stack(context), set_0_to_stack(context))
       end
 
-      def self.and
+      def self.and(_context)
         ["A=M", "M=D&M"]
       end
 
-      def self.or
+      def self.or(_context)
         ["A=M", "M=D|M"]
       end
 
-      def self.sub
+      def self.sub(_context)
         ["A=M", "M=M-D"]
       end
 
-      def self.not
+      def self.not(_context)
         ["M=!D"]
       end
 
-      def self.neg
+      def self.neg(_context)
         ["M=-D"]
+      end
+
+      def self.generate_memory_address(context)
+        {
+          constant: ->(v) { ["@#{v}"] },
+          local: ->(v) { ["@LCL", "D=M", "@#{v}", "A=D+A"] },
+          argument: ->(v) { ["@ARG", "D=M", "@#{v}", "A=D+A"] },
+          this: ->(v) { ["@THIS", "D=M", "@#{v}", "A=D+A"] },
+          that: ->(v) { ["@THAT", "D=M", "@#{v}", "A=D+A"] },
+          temp: ->(v) { ["@#{5 + v.to_s.to_i}"] },
+          pointer: ->(v) { [v.to_s.to_i.zero? ? "@THIS" : "@THAT"] },
+          static: ->(v) { ["@#{context[:file_name]}.#{v}"] }
+        }[context[:arg1]].call(context[:arg2])
+      end
+
+      def self.take_from_memory(context)
+        if context[:arg1] == :constant
+          ["D=A"]
+        else
+          ["D=M"]
+        end
+      end
+
+      def self.save(_context)
+        ["D=A"]
+      end
+
+      def self.put_to_temp_0(_context)
+        ["@Temp0", "M=D"]
+      end
+
+      def self.put_to_temp_1(_context)
+        ["@Temp1", "M=D"]
+      end
+
+      def self.save_from_temp_0_to_D(_context)
+        ["@Temp0", "D=M"]
+      end
+
+      def self.save_from_temp_0_to_D(_context)
+        ["@Temp0", "D=M"]
+      end
+
+      def self.save_from_temp_1_to_A(_context)
+        ["@Temp1", "A=M"]
       end
     end
 
     module Main
-      MEMORY_TABLE = {
-        constant: ->(v) { ["@#{v}", "D=A"] }
-      }
+      def self.generate_commands(context)
+        commands_by_op = {
+          push: %i[generate_memory_address take_from_memory put_to_stack inc],
+          pop: %i[dec take_from_stack
+                  put_to_temp_0
+                  generate_memory_address
+                  save
+                  put_to_temp_1
+                  save_from_temp_0_to_D
+                  save_from_temp_1_to_A
+                  put_to_memory],
+          add: %i[dec take_from_stack dec sum_current inc],
+          sub: %i[dec take_from_stack dec sub inc],
+          eq: %i[dec take_from_stack dec eq inc],
+          lt: %i[dec take_from_stack dec lt inc],
+          gt: %i[dec take_from_stack dec gt inc],
+          and: %i[dec take_from_stack dec and inc],
+          or: %i[dec take_from_stack dec or inc],
+          not: %i[dec take_from_stack not inc],
+          neg: %i[dec take_from_stack neg inc]
+        }
+        commands = commands_by_op[context[:op]]
 
-      OPS_TABLE = {
-        push: %i[put_to_stack inc],
-        pop: %i[put_to_stack inc],
-        add: %i[dec take_from_stack dec sum_current inc],
-        sub: %i[dec take_from_stack dec sub inc],
-        eq: %i[dec take_from_stack dec eq inc],
-        lt: %i[dec take_from_stack dec lt inc],
-        gt: %i[dec take_from_stack dec gt inc],
-        and: %i[dec take_from_stack dec and inc],
-        or: %i[dec take_from_stack dec or inc],
-        not: %i[dec take_from_stack not inc],
-        neg: %i[dec take_from_stack neg inc]
-      }
+        commands.map { |command_name| Commands.send(command_name, context) }
+      end
 
       def self.call(path_to_file)
         lines = IO.readlines(path_to_file, chomp: true)
         without_comments = remove_comments(lines)
+        file_name = File.basename(path_to_file, ".*")
 
-        parse(without_comments)
+        parse(without_comments, file_name)
       end
 
       def self.remove_comments(lines)
         lines.reject { |line| line.include?("//") }.reject(&:empty?)
       end
 
-      def self.parse(lines)
+      def self.parse(lines, file_name)
         lines.map do |line|
           op, arg1, arg2 = line.split(" ").map(&:to_sym)
-          memory_comands = MEMORY_TABLE[arg1]&.call(arg2)
-          operation_commands = OPS_TABLE[op].map { |op_name| Operations.send(op_name) }
+          context = { op: op, arg1: arg1, arg2: arg2, file_name: file_name }
+          commands = generate_commands(context)
           comment = "// #{line}"
 
-          [comment, memory_comands, operation_commands].compact
+          [comment, commands].compact
         end.flatten.join("\n") + "\n"
       end
     end
