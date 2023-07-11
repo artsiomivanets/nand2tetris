@@ -2,15 +2,12 @@
 
 require_relative "translator/version"
 require "pry"
-c = 0
 
 module Vm
   module Translator
     class Error < StandardError; end
 
     module Commands
-      @c = 0
-
       def self.put_to_stack(_context)
         ["@SP", "A=M", "M=D"]
       end
@@ -35,9 +32,9 @@ module Vm
         ["A=M", "M=D+M"]
       end
 
-      def self.branch(cond, t, f)
-        @c += 1
-        ["A=M", "D=M-D", "@T_#{@c}", cond, f, "@END_#{@c}", "0;JMP", "(T_#{@c})", t, "(END_#{@c})"]
+      def self.branch(cond, t, f, context)
+        ["A=M", "D=M-D", "@T_#{context[:counter]}", cond, f, "@END_#{context[:counter]}", "0;JMP",
+         "(T_#{context[:counter]})", t, "(END_#{context[:counter]})"]
       end
 
       def self.set_minus_1_to_stack(context)
@@ -49,15 +46,15 @@ module Vm
       end
 
       def self.eq(context)
-        branch("D;JEQ", set_minus_1_to_stack(context), set_0_to_stack(context))
+        branch("D;JEQ", set_minus_1_to_stack(context), set_0_to_stack(context), context)
       end
 
       def self.lt(context)
-        branch("D;JLT", set_minus_1_to_stack(context), set_0_to_stack(context))
+        branch("D;JLT", set_minus_1_to_stack(context), set_0_to_stack(context), context)
       end
 
       def self.gt(context)
-        branch("D;JGT", set_minus_1_to_stack(context), set_0_to_stack(context))
+        branch("D;JGT", set_minus_1_to_stack(context), set_0_to_stack(context), context)
       end
 
       def self.and(_context)
@@ -124,6 +121,18 @@ module Vm
       def self.save_from_temp_1_to_A(_context)
         ["@Temp1", "A=M"]
       end
+
+      def self.generate_label(context)
+        ["(#{context[:arg1]})"]
+      end
+
+      def self.generate_condition(context)
+        take_from_stack(context) + ["@#{context[:arg1]}", "D;JGT"]
+      end
+
+      def self.jmp(context)
+        ["@#{context[:arg1]}", "0;JMP"]
+      end
     end
 
     module Main
@@ -146,7 +155,10 @@ module Vm
           and: %i[dec take_from_stack dec and inc],
           or: %i[dec take_from_stack dec or inc],
           not: %i[dec take_from_stack not inc],
-          neg: %i[dec take_from_stack neg inc]
+          neg: %i[dec take_from_stack neg inc],
+          label: %i[generate_label],
+          goto: %i[jmp],
+          "if-goto": %i[dec generate_condition]
         }
         commands = commands_by_op[context[:op]]
 
@@ -162,13 +174,13 @@ module Vm
       end
 
       def self.remove_comments(lines)
-        lines.reject { |line| line.include?("//") }.reject(&:empty?)
+        lines.reject { |line| line[0]&.include?("/") }.reject(&:empty?).map { |s| s.split(%r{\s//\s})[0].strip }
       end
 
       def self.parse(lines, file_name)
-        lines.map do |line|
+        lines.map.with_index do |line, i|
           op, arg1, arg2 = line.split(" ").map(&:to_sym)
-          context = { op: op, arg1: arg1, arg2: arg2, file_name: file_name }
+          context = { op: op, arg1: arg1, arg2: arg2, file_name: file_name, counter: i }
           commands = generate_commands(context)
           comment = "// #{line}"
 

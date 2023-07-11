@@ -37,4 +37,18 @@ class Vm::TestTranslator < Minitest::Test
 
     assert_equal(result, asm)
   end
+
+  def test_basic_loop
+    result = File.read("test/fixtures/BasicLoop.asm")
+    asm = Vm::Translator::Main.call("test/fixtures/BasicLoop.vm")
+    assert_equal(result, asm)
+  end
+
+  def test_fibonacci
+    # result = File.read("test/fixtures/FibonacciSeries.asm")
+    asm = Vm::Translator::Main.call("test/fixtures/FibonacciSeries.vm")
+
+    File.write("test/fixtures/FibonacciSeries.asm", asm)
+    # assert_equal(result, asm)
+  end
 end
