@@ -133,6 +133,33 @@ module Vm
       def self.jmp(context)
         ["@#{context[:arg1]}", "0;JMP"]
       end
+
+      def self.return(context)
+        set_end_frame_address = ["@LCL", "D=M", "@Temp5", "M=D"]
+        put_return_value_to_arg_zero = dec(context) + take_from_stack(context) + ["@ARG", "A=M", "M=D"]
+        set_sp_as_arg = ["@ARG", "A=M", "D=A+1", "@SP", "M=D"]
+        restore_that = ["@1", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@THAT", "M=D"]
+        restore_this = ["@2", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@THIS", "M=D"]
+        restore_arg = ["@3", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@ARG", "M=D"]
+        restore_lcl = ["@4", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@LCL", "M=D"]
+        set_return_address = ["@5", "D=A", "@Temp5", "A=M", "D=A-D", "@Temp4", "M=D"]
+        got_to_return_address = ["@Temp4", "A=M", "0;JMP"]
+        [
+          set_end_frame_address,
+          set_return_address,
+          put_return_value_to_arg_zero,
+          set_sp_as_arg,
+          restore_that,
+          restore_this,
+          restore_arg,
+          restore_lcl,
+          got_to_return_address
+        ].flatten
+      end
+
+      def self.function(context)
+        ["(#{context[:arg1]})"]
+      end
     end
 
     module Main
@@ -158,7 +185,9 @@ module Vm
           neg: %i[dec take_from_stack neg inc],
           label: %i[generate_label],
           goto: %i[jmp],
-          "if-goto": %i[dec generate_condition]
+          "if-goto": %i[dec generate_condition],
+          return: %i[return],
+          function: %i[function]
         }
         commands = commands_by_op[context[:op]]
 

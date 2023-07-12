@@ -45,10 +45,17 @@ class Vm::TestTranslator < Minitest::Test
   end
 
   def test_fibonacci
-    # result = File.read("test/fixtures/FibonacciSeries.asm")
+    result = File.read("test/fixtures/FibonacciSeries.asm")
     asm = Vm::Translator::Main.call("test/fixtures/FibonacciSeries.vm")
 
-    File.write("test/fixtures/FibonacciSeries.asm", asm)
+    assert_equal(result, asm)
+  end
+
+  def test_simple_function
+    # result = File.read("test/fixtures/SimpleFunction.asm")
+    asm = Vm::Translator::Main.call("test/fixtures/SimpleFunction.vm")
+    File.write("test/fixtures/SimpleFunction.asm", asm)
+
     # assert_equal(result, asm)
   end
 end
