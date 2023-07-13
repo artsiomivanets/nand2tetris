@@ -160,6 +160,10 @@ module Vm
       def self.function(context)
         ["(#{context[:arg1]})"]
       end
+
+      def self.bootstrap(context)
+        binding.pry
+      end
     end
 
     module Main
@@ -187,23 +191,38 @@ module Vm
           goto: %i[jmp],
           "if-goto": %i[dec generate_condition],
           return: %i[return],
-          function: %i[function]
+          function: %i[function],
+          bootstrap: %i[bootstrap]
         }
         commands = commands_by_op[context[:op]]
 
         commands.map { |command_name| Commands.send(command_name, context) }
       end
 
-      def self.call(path_to_file)
-        lines = IO.readlines(path_to_file, chomp: true)
+      def self.prepare_dir_lines(path)
+        all_vm_files = Dir.chdir(path) { Dir.glob("*.vm") }
+        sys_file_name, programs_file_name = all_vm_files.partition { |i| i == "Sys.vm" }
+        commands = [sys_file_name, programs_file_name].flatten.map do |p|
+          IO.readlines(File.join(path, p), chomp: true)
+        end.flatten
+        result = ["bootstrap"] + commands
+      end
+
+      def self.call(path)
+        lines = if File.directory?(path)
+                  prepare_dir_lines(path)
+                else
+                  IO.readlines(path, chomp: true)
+                end
+
         without_comments = remove_comments(lines)
-        file_name = File.basename(path_to_file, ".*")
+        file_name = File.basename(path, ".*")
 
         parse(without_comments, file_name)
       end
 
       def self.remove_comments(lines)
-        lines.reject { |line| line[0]&.include?("/") }.reject(&:empty?).map { |s| s.split(%r{\s//\s})[0].strip }
+        lines.reject { |line| line[0]&.include?("/") }&.reject(&:empty?)&.map { |s| s.split(%r{\s//\s})[0].strip }
       end
 
       def self.parse(lines, file_name)
