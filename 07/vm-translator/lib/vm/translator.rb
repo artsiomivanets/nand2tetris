@@ -102,6 +102,10 @@ module Vm
         ["D=A"]
       end
 
+      def self.save_pointer(_context)
+        ["D=M"]
+      end
+
       def self.put_to_temp_0(_context)
         ["@Temp0", "M=D"]
       end
@@ -126,8 +130,8 @@ module Vm
         ["(#{context[:arg1]})"]
       end
 
-      def self.generate_condition(context)
-        take_from_stack(context) + ["@#{context[:arg1]}", "D;JGT"]
+      def self.non_eq_to_zero(context)
+        take_from_stack(context) + ["@#{context[:arg1]}", "D;JNE"]
       end
 
       def self.jmp(context)
@@ -135,15 +139,17 @@ module Vm
       end
 
       def self.return(context)
-        set_end_frame_address = ["@LCL", "D=M", "@Temp5", "M=D"]
-        put_return_value_to_arg_zero = dec(context) + take_from_stack(context) + ["@ARG", "A=M", "M=D"]
-        set_sp_as_arg = ["@ARG", "A=M", "D=A+1", "@SP", "M=D"]
-        restore_that = ["@1", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@THAT", "M=D"]
-        restore_this = ["@2", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@THIS", "M=D"]
-        restore_arg = ["@3", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@ARG", "M=D"]
-        restore_lcl = ["@4", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@LCL", "M=D"]
-        set_return_address = ["@5", "D=A", "@Temp5", "A=M", "D=A-D", "@Temp4", "M=D"]
-        got_to_return_address = ["@Temp4", "A=M", "0;JMP"]
+        set_end_frame_address = ["// SET END FRAME ADDRESS"] + ["@LCL", "D=M", "@Temp5", "M=D"]
+        put_return_value_to_arg_zero = ["// Put return value to arg"] + dec(context) + take_from_stack(context) + [
+          "@ARG", "A=M", "M=D"
+        ]
+        set_sp_as_arg = ["// Set SP as ARG"] + ["@ARG", "A=M", "D=A+1", "@SP", "M=D"]
+        restore_that = ["// Restore THAT"] + ["@1", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@THAT", "M=D"]
+        restore_this = ["// Restore THIS"] + ["@2", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@THIS", "M=D"]
+        restore_arg = ["// Restore ARG"] + ["@3", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@ARG", "M=D"]
+        restore_lcl = ["// Restore LCL"] + ["@4", "D=A", "@Temp5", "A=M", "A=A-D", "D=M", "@LCL", "M=D"]
+        set_return_address = ["// Set  return address"] + ["@5", "D=A", "@Temp5", "A=M", "D=A-D", "@Temp4", "M=D"]
+        got_to_return_address = ["// Go to return address"] + ["@Temp4", "A=M", "A=M", "0;JMP"]
         [
           set_end_frame_address,
           set_return_address,
@@ -161,8 +167,31 @@ module Vm
         ["(#{context[:arg1]})"]
       end
 
-      def self.bootstrap(context)
-        binding.pry
+      def self.call(context)
+        save_return = ["@RETURN_#{context[:arg1]}_#{context[:counter]}"].map do |label|
+          ["// SAVE #{label}", label, save(context), put_to_stack(context), inc(context)]
+        end.flatten
+        save_pointers = ["@LCL", "@ARG", "@THIS", "@THAT"].map do |label|
+          ["// SAVE #{label}", label, save_pointer(context), put_to_stack(context), inc(context)]
+        end.flatten
+        set_arg = ["// SET ARG", "@#{context[:arg2]}", "D=A", "@SP", "A=M", "D=A-D", "@5", "D=D-A", "@ARG", "M=D"]
+        set_lcl_to_sp = ["// SET LCL TO SP", "@SP", "D=M", "@LCL", "M=D"]
+        go_to_function = ["// GO TO FUNCTION", "@#{context[:arg1]}", "0;JMP"]
+        [save_return, save_pointers, set_arg, set_lcl_to_sp, go_to_function,
+         "(RETURN_#{context[:arg1]}_#{context[:counter]})"].flatten
+      end
+
+      def self.bootstrap(_context)
+        basic_pointers = {
+          "SP" => 256,
+          "LCL" => 300,
+          "ARG" => 400,
+          "THIS" => 3000,
+          "THAT" => 3010
+        }
+        initialize_pointer_addresses = basic_pointers.map do |label, value|
+          ["@#{value}", "D=A", "@#{label}", "M=D"]
+        end.flatten
       end
     end
 
@@ -189,10 +218,11 @@ module Vm
           neg: %i[dec take_from_stack neg inc],
           label: %i[generate_label],
           goto: %i[jmp],
-          "if-goto": %i[dec generate_condition],
+          "if-goto": %i[dec non_eq_to_zero],
           return: %i[return],
           function: %i[function],
-          bootstrap: %i[bootstrap]
+          bootstrap: %i[bootstrap],
+          call: %i[call]
         }
         commands = commands_by_op[context[:op]]
 
@@ -205,7 +235,7 @@ module Vm
         commands = [sys_file_name, programs_file_name].flatten.map do |p|
           IO.readlines(File.join(path, p), chomp: true)
         end.flatten
-        result = ["bootstrap"] + commands
+        ["bootstrap"] + commands
       end
 
       def self.call(path)
