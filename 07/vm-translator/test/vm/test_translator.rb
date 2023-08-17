@@ -58,10 +58,17 @@ class Vm::TestTranslator < Minitest::Test
   #   assert_equal(result, asm)
   # end
 
-  def test_fibonacci_function_with_bootstrapping
+  # def test_fibonacci_function_with_bootstrapping
+  #   result = File.read("test/fixtures/FbonacciElement")
+  #   asm = Vm::Translator::Main.call("test/fixtures/FibonacciElement")
+  #
+  #   assert_equal(result, asm)
+  # end
+
+  def test_nested_call
     # result = File.read("test/fixtures/FbonacciElement")
-    asm = Vm::Translator::Main.call("test/fixtures/FibonacciElement")
-    File.write("test/fixtures/FibonacciElement/FibonacciElement.asm", asm)
+    asm = Vm::Translator::Main.call("test/fixtures/Sys.vm")
+    File.write("test/fixtures/Sys.asm", asm)
 
     # assert_equal(result, asm)
   end
