@@ -1,0 +1,20 @@
+<ifStatement>
+  <keyword>if</keyword>
+  <symbol>(</symbol>
+  <expression>
+    <term>
+      <identifier>b</identifier>
+    </term>
+  </expression>
+  <symbol>)</symbol>
+  <symbol>{</symbol>
+  <statements>
+  </statements>
+  <symbol>}</symbol>
+  <keyword>else</keyword>
+  <symbol>{</symbol>
+  <statements>
+  </statements>
+  <symbol>}</symbol>
+</ifStatement>
+
